@@ -1,0 +1,63 @@
+import 'package:flutter/material.dart';
+import 'package:noise_battle/provider/game_provider.dart';
+import 'package:noise_battle/widgets/action_button.dart';
+import 'package:provider/provider.dart';
+
+class ActionApp extends StatefulWidget {
+  const ActionApp({super.key});
+
+  @override
+  State<ActionApp> createState() => _ActionAppState();
+}
+
+class _ActionAppState extends State<ActionApp>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    duration: const Duration(seconds: 2),
+    vsync: this,
+  );
+
+ 
+
+  late final Animation<Offset> _offsetAnimation = Tween<Offset>(
+    begin: const Offset(0.0, 1.5),
+    end: const Offset(0.0, 0.0),
+  ).animate(CurvedAnimation(
+    parent: _controller,
+    curve: Curves.elasticInOut,
+  ));
+
+  late final Animation<double> _opacity = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(
+          parent: _controller,
+          curve: Interval(0.5, 1),
+          reverseCurve: Interval(0.5, 1.0)));
+
+  @override
+  void initState() {
+    super.initState();
+ 
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+        opacity: _opacity,
+        child: SlideTransition(
+            position: _offsetAnimation,
+            child: ActionButton(
+                title: 'Add Player',
+                color: Colors.white,
+                textColor: Theme.of(context).colorScheme.primary,
+                onPressed: () {
+                  Provider.of<GameProvider>(context, listen: false).startGame();
+                })));
+  }
+}
