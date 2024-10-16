@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:noise_battle/common/routes.dart';
 import 'package:noise_battle/models/game.status.enum.dart';
@@ -7,10 +8,10 @@ import 'package:noise_battle/provider/game_provider.dart';
 import 'package:noise_battle/screen/game_screen/widgets/header_player.dart';
 import 'package:noise_battle/widgets/action_button.dart';
 import 'package:noise_battle/widgets/action_secondary_button.dart';
-import 'package:noise_meter/noise_meter.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'widgets/bar_indicator.dart';
+import 'package:audio_streamer/audio_streamer.dart';
 
 class GameScreen extends StatefulWidget {
   const GameScreen({super.key});
@@ -22,10 +23,10 @@ class GameScreen extends StatefulWidget {
 class _GameScreenState extends State<GameScreen> {
   Timer? _timer;
   int _remainingSeconds;
- 
-  NoiseReading? _latestReading;
-  StreamSubscription<NoiseReading>? _noiseSubscription;
-  NoiseMeter? noiseMeter;
+  double lastValueScaled = 0;
+  double? recordingTime;
+  StreamSubscription<List<double>>? audioSubscription;
+  
   GameProvider? _gameProvider;
 
   _GameScreenState({int startSeconds = EVALUEATION_SECONDS})
@@ -40,17 +41,13 @@ class _GameScreenState extends State<GameScreen> {
 
   @override
   void dispose() {
-    _noiseSubscription?.cancel();
+    audioSubscription?.cancel();
     super.dispose();
   }
 
-  void onData(NoiseReading noiseReading) =>
-      setState(() => _latestReading = noiseReading);
-  void onError(Object error) => stop();
 
   Future<bool> checkPermission() async => await Permission.microphone.isGranted;
-  Future<void> requestPermission() async =>
-      await Permission.microphone.request();
+  Future<void> requestPermission() async => await Permission.microphone.request();
 
   Future<void> start() async {
     _gameProvider?.startGame();
@@ -59,11 +56,20 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Future<void> _startRecording() async {
-    noiseMeter ??= NoiseMeter();
     if (!(await checkPermission())) await requestPermission();
-    _noiseSubscription = noiseMeter?.noise.listen(onData, onError: onError);
-   
+  
+    audioSubscription = AudioStreamer().audioStream.listen(onAudio, onError: (Object error) {
+          print(error);
+    }); 
   }
+
+    void onAudio(List<double> buffer) async {
+      
+ 
+      var maxValue =  buffer.reduce(max);
+      setState(() => lastValueScaled = maxValue*100);
+  }
+
 
   void _startCountdown() {
     _remainingSeconds = EVALUEATION_SECONDS;
@@ -74,8 +80,8 @@ class _GameScreenState extends State<GameScreen> {
 
       } else {
         setState(() {
-          //_gameProvider?.setPlayerScore(30 + (_latestReading?.meanDecibel ?? 0) * .01);
-          _gameProvider?.setPlayerScore(double.parse(((_latestReading?.meanDecibel ?? 0)).toStringAsFixed(2)));
+          _gameProvider?.setPlayerScore(double.parse(((lastValueScaled)).toStringAsFixed(2)));
+          //_gameProvider?.setPlayerScore(double.parse(((_latestReading?.meanDecibel ?? 0)).toStringAsFixed(2)));
           _remainingSeconds--;
         });
       }
@@ -84,7 +90,7 @@ class _GameScreenState extends State<GameScreen> {
 
   /// Stop sampling.
   void stop() {
-    _noiseSubscription?.pause();
+    audioSubscription?.cancel();
     setState(()  {
       _gameProvider?.setFinished();
    
@@ -98,8 +104,8 @@ class _GameScreenState extends State<GameScreen> {
           height:  MediaQuery.of(context).size.height,
           padding: EdgeInsets.symmetric(horizontal: 52),
           child:  SingleChildScrollView(
-  child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 HeaderPlayer(
@@ -109,9 +115,9 @@ class _GameScreenState extends State<GameScreen> {
                 ),
 
                 BarIndicator(
-                    height: MediaQuery.of(context).size.height * .5,
+                    height: MediaQuery.of(context).size.height * .55,
                     width: MediaQuery.of(context).size.height * .2,
-                    progress: (_latestReading?.meanDecibel ?? 0)),
+                    progress: (lastValueScaled)),
                 const SizedBox(height: 20),
                 (_remainingSeconds == 5 || _remainingSeconds == 0) && _gameProvider?.isCompleted() == false
                     ? ActionButton(
